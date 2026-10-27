@@ -5,7 +5,7 @@
 # Usage: cp .env.example .env  &&  docker compose up -d
 # UI:    http://localhost:8080  (user and password set in .env)
 #
-# Local development only; don't use as is in production.
+# Local development only
 # All credentials come from .env (never from the code or this file).
 # =============================================================================
 x-airflow-common:
