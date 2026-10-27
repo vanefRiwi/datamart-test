@@ -179,6 +179,20 @@ Esperado: **522.535** ventas, **10.004** devoluciones, **277.958** filas product
 
 Desde DBeaver o Power BI: host `localhost`, puerto `5433`, base `datamart_dwh` y el usuario/clave de `.env`. Para ver los resultados de las consultas
 
+### 2.8 El DAG es idempotente
+
+Toma la huella de las tablas principales, ejecuta el DAG de nuevo y vuelve a tomarla:
+
+```bash
+docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh < sql/validation/idempotency_fingerprint.sql
+docker compose exec airflow-scheduler airflow dags trigger datamart_daily_etl
+# espera a que la nueva ejecución diga "success" (unos 2 minutos)
+docker compose exec airflow-scheduler airflow dags list-runs datamart_daily_etl
+docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh < sql/validation/idempotency_fingerprint.sql
+```
+
+Esperado: las dos salidas son **idénticas** (mismo `row_count` y mismo `fingerprint` para `daily_product_revenue_agg`, `products_dim`, `returns_fact` y `sales_fact`), mientras que `audit.pipeline_runs` suma una fila por la nueva ejecución. Por qué funciona: [decisiones técnicas, sección 5](docs/technical_decisions.es.md#5-idempotencia-del-dag).
+
 ---
 
 ## 3. Fuentes de datos
@@ -284,7 +298,7 @@ Resumen; la justificación completa, con cifras y alternativas descartadas, est�
 | Códigos POST, DOT, M, D, BANK CHARGES... | Rechazo `not_a_product_code` |
 | Venta con precio ≤ 0 | Rechazo `non_positive_price` en `audit.rejected_records` |
 | Categoría sin API | Semilla de reglas por palabra clave con prioridad (`seeds/category_rules.csv`) |
-| Idempotencia | Transformación determinística + upsert de dimensiones + delete-insert de hechos + `row_hash` como PK. Probado: dos ejecuciones dan exactamente las mismas filas |
+| Idempotencia | "Reemplazar, nunca acumular": transformación determinista, upsert de dimensiones, delete-insert de hechos en una transacción, `row_hash` como PK. Probado con una huella de cada tabla: dos ejecuciones dejan exactamente las mismas filas ([cómo comprobarlo](#28-el-dag-es-idempotente), [por qué](docs/technical_decisions.es.md#5-idempotencia-del-dag)) |
 
 ---
 
@@ -340,7 +354,8 @@ datamart-test/
 │   └── log_utils.py            # Helpers de log
 ├── sql/
 │   ├── ddl/                    # Esquemas y tablas (se ejecutan al iniciar el DWH)
-│   └── queries/                # Una consulta por pregunta de negocio
+│   ├── queries/                # Una consulta por pregunta de negocio
+│   └── validation/             # Huella para comprobar la idempotencia
 ├── seeds/                      # Reglas de categoría y mapeo de países
 ├── data/raw/                   # Fuentes CSV de Kaggle
 ├── docs/                       # Decisiones, exploración, modelo y respuestas (EN + ES)

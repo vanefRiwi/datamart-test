@@ -179,6 +179,20 @@ Expected: **522,535** sales, **10,004** returns, **277,958** product-day rows, *
 
 From DBeaver or Power BI: host `localhost`, port `5433`, database `datamart_dwh` and the user/password from `.env`. To view the query results
 
+### 2.8 The DAG is idempotent
+
+Take the fingerprint of the main tables, run the DAG again and take it again:
+
+```bash
+docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh < sql/validation/idempotency_fingerprint.sql
+docker compose exec airflow-scheduler airflow dags trigger datamart_daily_etl
+# wait until the new run shows "success" (about 2 minutes)
+docker compose exec airflow-scheduler airflow dags list-runs datamart_daily_etl
+docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh < sql/validation/idempotency_fingerprint.sql
+```
+
+Expected: both outputs are **identical** (same `row_count` and same `fingerprint` for `daily_product_revenue_agg`, `products_dim`, `returns_fact` and `sales_fact`), while `audit.pipeline_runs` gains one row for the new run. Why it works: [technical decisions, section 5](docs/technical_decisions.md#5-dag-idempotency).
+
 ---
 
 ## 3. Data sources
@@ -284,7 +298,7 @@ Summary; the full reasoning, with numbers and discarded alternatives, is in **[`
 | POST, DOT, M, D, BANK CHARGES... codes | Rejected as `not_a_product_code` |
 | Sale with price ≤ 0 | Rejected as `non_positive_price` in `audit.rejected_records` |
 | Category without an API | Keyword rules seed with priority (`seeds/category_rules.csv`) |
-| Idempotency | Deterministic transform + dimension upsert + fact delete-insert + `row_hash` as PK. Tested: two runs leave exactly the same rows |
+| Idempotency | "Replace, never append": deterministic transform, dimension upsert, fact delete-insert in one transaction, `row_hash` as PK. Tested with a fingerprint of every table: two runs leave exactly the same rows ([how to check](#28-the-dag-is-idempotent), [why](docs/technical_decisions.md#5-dag-idempotency)) |
 
 ---
 
@@ -340,7 +354,8 @@ datamart-test/
 │   └── log_utils.py            # Logging helpers
 ├── sql/
 │   ├── ddl/                    # Schemas and tables (run when the DWH starts)
-│   └── queries/                # One query per business question
+│   ├── queries/                # One query per business question
+│   └── validation/             # Idempotency fingerprint
 ├── seeds/                      # Category rules and country mapping
 ├── data/raw/                   # Kaggle source CSVs
 ├── docs/                       # Decisions, exploration, model and answers (EN + ES)
