@@ -1,5 +1,7 @@
 # Exploración de las fuentes
 
+[English](data_exploration.md) | **Español**
+
 Resultados de `uv run python scripts/explore_sources.py` sobre los archivos de `data/raw/`. Cada problema encontrado tiene su tratamiento en el pipeline (columna **Decisión**).
 
 ## 1. Ficha de las fuentes
@@ -17,7 +19,7 @@ Resultados de `uv run python scripts/explore_sources.py` sobre los archivos de `
 | Periodo | 01/12/2010 08:26 a 09/12/2011 12:50 | Igual |
 | Granularidad | Una fila = una línea de factura | Igual |
 
-> **Hallazgo principal.** El histórico entregado no trae dos años adicionales: es **el mismo registro** con otro formato. Las 536.480 combinaciones únicas de factura, código, cantidad y fecha están en ambos archivos. Por eso la deduplicación entre fuentes es la decisión con más impacto (ver [decisiones técnicas, 4.3](decisiones_tecnicas.md#43-solapamiento-y-duplicados-entre-las-dos-fuentes)). El pipeline también acepta el `online_retail_II.csv` original (columnas `Invoice`, `Price`, `Customer ID` y fechas ISO).
+> **Hallazgo principal.** El histórico entregado no trae dos años adicionales: es **el mismo registro** con otro formato. Las 536.480 combinaciones únicas de factura, código, cantidad y fecha están en ambos archivos. Por eso la deduplicación entre fuentes es la decisión con más impacto (ver [decisiones técnicas, 4.3](technical_decisions.es.md#43-solapamiento-y-duplicados-entre-las-dos-fuentes)). El pipeline también acepta el `online_retail_II.csv` original (columnas `Invoice`, `Price`, `Customer ID` y fechas ISO).
 
 ## 2. Nulos por columna (iguales en ambas fuentes)
 

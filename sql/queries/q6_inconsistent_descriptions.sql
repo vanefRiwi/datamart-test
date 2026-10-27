@@ -25,4 +25,4 @@ SELECT UPPER(REGEXP_REPLACE(raw_record ->> 'stock_code', '\s', '', 'g')) AS code
 FROM audit.rejected_records
 WHERE reason = 'not_a_product_code' AND source_system = 'daily_sales'
 GROUP BY 1
-ORDER BY lines DESC;
+ORDER BY lines DESC, code;

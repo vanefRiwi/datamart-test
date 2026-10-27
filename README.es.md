@@ -9,6 +9,8 @@ Pipeline de extremo a extremo orquestado con **Apache Airflow 3.1.5** dentro de 
 **Autor:** Vanessa Fontalvo Reniz · Ingeniera de Sistemas y Computación
 **Módulo:** Ingeniería de Datos — Prueba de desempeño (Airflow + Data Warehouse)
 
+> Todos los documentos de `docs/` están en inglés (principal, `*.md`) y en español (`*.es.md`): [decisiones técnicas](docs/technical_decisions.es.md), [exploración de datos](docs/data_exploration.es.md), [modelo de datos](docs/data_model.es.md) y [respuestas de negocio](docs/business_answers.es.md).
+
 ---
 
 ## 1. Inicio rápido (menos de 10 minutos)
@@ -17,8 +19,8 @@ Pipeline de extremo a extremo orquestado con **Apache Airflow 3.1.5** dentro de 
 
 ```bash
 # 1. Clonar
-git clone https://github.com/vanefRiwi/practice-test-airflow.git
-cd practice-test-airflow
+git clone https://github.com/vanefRiwi/datamart-test.git
+cd datamart-test
 
 # 2. Crear el .env a partir del ejemplo (en Linux, pon tu UID: echo "AIRFLOW_UID=$(id -u)" >> .env)
 cp .env.example .env
@@ -117,7 +119,7 @@ Desde DBeaver o Power BI: host `localhost`, puerto `5433`, base `datamart_dwh` y
 | Ventas diarias (Kaggle `carrie1/ecommerce-data`) | `data/raw/data.csv` | 541.909 | Encoding ISO-8859-1, cantidades negativas, precios ≤ 0, 24,9 % sin cliente, códigos de servicio (POST, DOT...), duplicados |
 | Historial (Kaggle `thedevastator/online-retail-transaction-dataset`) | `data/raw/online_retail.csv` | 541.909 | Columna `index` extra, CustomerID decimal (`17850.0`) y **mismo periodo y líneas** que la fuente diaria |
 
-Los CSV están en `data/raw/` tal como vienen de Kaggle (45 y 50 MB). La exploración completa está en [`docs/exploracion_datos.md`](docs/exploracion_datos.md).
+Los CSV están en `data/raw/` tal como vienen de Kaggle (45 y 50 MB). La exploración completa está en [`docs/data_exploration.es.md`](docs/data_exploration.es.md).
 
 ---
 
@@ -176,7 +178,7 @@ Cada fuente se lee como texto (`dtype=str`) para no inferir tipos a ciegas. Si U
 2. CustomerID como texto entero (`17850.0` → `17850`); vacío = cliente ANONYMOUS.
 3. Fechas con formato explícito por fuente → `Europe/London` → **UTC**.
 4. Países normalizados con `seeds/country_mapping.csv`.
-5. Cada fila recibe un motivo de rechazo o queda válida (ver tabla en [decisiones técnicas](docs/decisiones_tecnicas.md#motivos-de-rechazo-se-evalúan-en-orden-gana-el-primero)).
+5. Cada fila recibe un motivo de rechazo o queda válida (ver tabla en [decisiones técnicas](docs/technical_decisions.es.md#motivos-de-rechazo-se-evalúan-en-orden-gana-el-primero)).
 6. `row_hash` = MD5 de la clave natural; duplicados dentro de cada fuente y entre fuentes (gana `data.csv`).
 7. Nombre canónico (descripción más frecuente) y categoría por palabra clave.
 
@@ -202,15 +204,15 @@ Esquema estrella con **dos hechos separados** (ventas y devoluciones) que compar
           daily_product_revenue_agg (id_date, id_product)
 ```
 
-- Diagrama completo: [`docs/modelo_datos.md`](docs/modelo_datos.md) (se dibuja en GitHub) y [`docs/modelo_datos.dbml`](docs/modelo_datos.dbml) para dbdiagram.io.
+- Diagrama completo: [`docs/data_model.es.md`](docs/data_model.es.md) (se dibuja en GitHub) y [`docs/data_model.dbml`](docs/data_model.dbml) para dbdiagram.io.
 - DDL: [`sql/ddl/`](sql/ddl). Corre al crear el contenedor (`docker-entrypoint-initdb.d`) y otra vez en la tarea `create_dwh_tables` (todo es `IF NOT EXISTS`).
-- Por qué este diseño: [`docs/decisiones_tecnicas.md`](docs/decisiones_tecnicas.md#2-modelo-del-repositorio-analítico).
+- Por qué este diseño: [`docs/technical_decisions.es.md`](docs/technical_decisions.es.md#2-modelo-del-repositorio-analítico).
 
 ---
 
 ## 7. Decisiones técnicas y casos ambiguos
 
-Resumen; la justificación completa, con cifras y alternativas descartadas, está en **[`docs/decisiones_tecnicas.md`](docs/decisiones_tecnicas.md)**.
+Resumen; la justificación completa, con cifras y alternativas descartadas, está en **[`docs/technical_decisions.es.md`](docs/technical_decisions.es.md)**.
 
 | Caso | Decisión |
 |---|---|
@@ -226,17 +228,17 @@ Resumen; la justificación completa, con cifras y alternativas descartadas, est�
 
 ## 8. Preguntas de negocio
 
-Una consulta por pregunta en [`sql/queries/`](sql/queries); respuestas con cifras en **[`docs/respuestas_negocio.md`](docs/respuestas_negocio.md)**.
+Una consulta por pregunta en [`sql/queries/`](sql/queries); respuestas con el resultado exacto de cada consulta en **[`docs/business_answers.es.md`](docs/business_answers.es.md)**.
 
 | # | Pregunta | Consulta | Respuesta corta |
 |---|---|---|---|
-| 1 | Evolución mensual de ventas netas | `q1_monthly_net_sales.sql` | Pico en noviembre 2011 (1,43 M); sep-nov = 35 % del año |
-| 2 | Categorías por revenue y devoluciones | `q2_category_revenue_returns.sql` | Home = 59,8 % del bruto; Stationery la de más devolución (16,2 %) |
-| 3 | Top 10 neto y top 10 tasa de devolución | `q3_top_products.sql` | #1 REGENCY CAKESTAND (164 mil neto) |
-| 4 | Países y ticket promedio | `q4_country_avg_ticket.sql` | Reino Unido = 90,5 % de facturas; Países Bajos ticket 3.053 |
-| 5 | Identificados vs. sin CustomerID | `q5_identified_vs_anonymous.sql` | Sin cliente: ticket 1.101 vs 475, 96 productos por factura |
-| 6 | Descripciones inconsistentes y códigos únicos | `q6_inconsistent_descriptions.sql` | 3.927 códigos; 637 (16,2 %) inconsistentes |
-| 7 | Recomendación al equipo de producto | `q7_product_recommendation.sql` | Dos pedidos cancelados = 51,7 % de las devoluciones → tope de cantidad por línea |
+| 1 | Evolución mensual de ventas netas | `q1_monthly_net_sales.sql` | Pico en noviembre 2011 (neto 1.426.587,54); sep-nov = 34,97 % del bruto |
+| 2 | Categorías por revenue y devoluciones | `q2_category_revenue_returns.sql` | Home = 59,79 % del bruto; Stationery la de mayor proporción de devolución (16,16 %) |
+| 3 | Top 10 neto y top 10 tasa de devolución | `q3_top_products.sql` | #1 por neto: 22423 REGENCY CAKESTAND 3 TIER (164.459,49); #1 por tasa de devolución: 23843 (100,00 %) |
+| 4 | Países y ticket promedio | `q4_country_avg_ticket.sql` | Reino Unido = 90,53 % de facturas; ticket más alto: Países Bajos (3.052,57) |
+| 5 | Identificados vs. sin CustomerID | `q5_identified_vs_anonymous.sql` | Sin CustomerID: ticket 1.101,38 vs 474,77, 95,8 productos por factura |
+| 6 | Descripciones inconsistentes y códigos únicos | `q6_inconsistent_descriptions.sql` | 3.927 códigos; 637 (16,22 %) inconsistentes |
+| 7 | Recomendación al equipo de producto | `q7_product_recommendation.sql` | Dos pedidos cancelados = 51,68 % de todas las devoluciones → tope de cantidad por línea |
 
 ---
 
@@ -258,7 +260,7 @@ Airflow no se instala en el entorno local a propósito: es pesado y ya corre en 
 ## 10. Estructura del repositorio
 
 ```
-practice-test-airflow/
+datamart-test/
 ├── docker-compose.yml          # Airflow 3.1.5 + Postgres de metadatos + Postgres DWH
 ├── .env.example                # Variables de entorno necesarias (el .env real está en .gitignore)
 ├── pyproject.toml / uv.lock    # Entorno local con uv
@@ -279,7 +281,7 @@ practice-test-airflow/
 │   └── queries/                # Una consulta por pregunta de negocio
 ├── seeds/                      # Reglas de categoría y mapeo de países
 ├── data/raw/                   # Fuentes CSV de Kaggle
-├── docs/                       # Decisiones, exploración, modelo y respuestas
+├── docs/                       # Decisiones, exploración, modelo y respuestas (EN + ES)
 ├── scripts/explore_sources.py  # Exploración de datos
 ├── tests/                      # Pruebas con pytest
 ├── config/ logs/ plugins/      # Carpetas que monta Airflow

@@ -1,6 +1,8 @@
 -- =============================================================================
 -- Q7. Numbers behind the recommendation to the product team:
 -- products with high gross revenue that lose a relevant share to returns.
+-- pct_of_all_returns is computed after the WHERE filter: it is the share of the
+-- returns of the products with at least 5,000 GBP of gross revenue.
 -- =============================================================================
 WITH product AS (
     SELECT p.stock_code,

@@ -1,6 +1,8 @@
 # Diagrama del modelo de datos
 
-Esquema estrella en el esquema `dwh` del PostgreSQL analítico. GitHub dibuja el diagrama de abajo automáticamente. Para la versión en dbdiagram.io, importa [`modelo_datos.dbml`](modelo_datos.dbml). El DDL completo está en [`sql/ddl/`](../sql/ddl).
+[English](data_model.md) | **Español**
+
+Esquema estrella en el esquema `dwh` del PostgreSQL analítico. GitHub dibuja el diagrama de abajo automáticamente. Para la versión en dbdiagram.io, importa [`data_model.dbml`](data_model.dbml). El DDL completo está en [`sql/ddl/`](../sql/ddl). Por qué se diseñó así: [decisiones técnicas, sección 2](technical_decisions.es.md#2-modelo-del-repositorio-analítico).
 
 ```mermaid
 erDiagram

@@ -1,5 +1,7 @@
 # Documento de decisiones técnicas
 
+[English](technical_decisions.md) | **Español**
+
 Este documento explica **cómo se diseñó el repositorio analítico y por qué**, cómo se resolvió cada caso ambiguo del enunciado y cómo se garantiza la idempotencia del DAG. Las cifras son las reales obtenidas al correr el pipeline con los archivos de Kaggle incluidos en `data/raw/`.
 
 ---
@@ -31,7 +33,7 @@ seeds/*.csv ──────────────────────�
 
 ## 2. Modelo del repositorio analítico
 
-**Esquema estrella con dos hechos separados (ventas y devoluciones) que comparten dimensiones, más un agregado diario.** El diagrama está en [`modelo_datos.md`](modelo_datos.md) (Mermaid) y [`modelo_datos.dbml`](modelo_datos.dbml) (para importar en dbdiagram.io).
+**Esquema estrella con dos hechos separados (ventas y devoluciones) que comparten dimensiones, más un agregado diario.** El diagrama está en [`data_model.es.md`](data_model.es.md) (Mermaid) y [`data_model.dbml`](data_model.dbml) (para importar en dbdiagram.io).
 
 | Tabla | Grano | Para qué |
 |---|---|---|
@@ -62,7 +64,7 @@ La regla de negocio define el revenue neto como *"bruto después de aplicar los 
 - **`row_hash` como llave primaria de los hechos**: MD5 de la clave natural (factura, código, cantidad, precio, fecha UTC al minuto, cliente). No depende de una secuencia, así que dos ejecuciones dejan filas idénticas, y la base rechaza cualquier duplicado.
 - **Fechas**: `invoice_ts_utc` (`TIMESTAMPTZ`) en los hechos y `id_date` calculado sobre la fecha UTC.
 - **Dinero**: `NUMERIC(12,3)` para el precio (hay precios con 3 decimales) y `NUMERIC(14,2)` para montos. Moneda en columna `currency` (Variable `datamart_currency` = `GBP`).
-- **Constraints con nombre**: `fk_fact_*`, `uq_*`, `ck_*_positive`, como en mis proyectos anteriores.
+- **Constraints con nombre**: `fk_fact_*`, `uq_*`, `ck_*_positive`, para que un error de carga diga qué regla se rompió.
 
 ---
 
@@ -89,6 +91,19 @@ La regla de negocio define el revenue neto como *"bruto después de aplicar los 
 
 Total rechazado: **18.740 filas de 1.083.818 leídas (1,73 %)**. Si el porcentaje supera la Variable `datamart_max_reject_ratio` (10 %), la tarea `check_quality` falla y no se carga nada.
 
+### Dónde cambiar cada decisión
+
+Cada regla vive en un solo lugar, así que cambiarla es editar una línea:
+
+| Para cambiar | Editar |
+|---|---|
+| Qué códigos cuentan como producto | `PRODUCT_CODE_PATTERN` en `include/datamart/config.py` |
+| El id o código del cliente anónimo | `ANONYMOUS_CUSTOMER_ID` / `ANONYMOUS_CUSTOMER_CODE` en `config.py` (y la fila semilla en `sql/ddl/02_dimensions.sql`) |
+| El umbral de rechazos, la zona horaria de origen, la moneda o los nombres de archivo | Variables de Airflow (`airflow/init/variables.json` o Admin → Variables), sin tocar código |
+| Las categorías de producto | `seeds/category_rules.csv` (palabra clave, categoría, prioridad) |
+| Los alias de países | `seeds/country_mapping.csv` |
+| El periodo usado para el revenue neto | `SQL_DAILY_AGG` en `include/datamart/load.py` (grano `id_date`, `id_product`) |
+
 ---
 
 ## 4. Casos ambiguos y cómo se resolvieron
@@ -97,12 +112,12 @@ Total rechazado: **18.740 filas de 1.083.818 leídas (1,73 %)**. Si el porcentaj
 
 - **Hallazgo:** 135.080 filas (24,93 %) de `data.csv` no tienen cliente.
 - **Decisión:** se **incluyen** y se asignan al cliente genérico `id_customer = -1` (`ANONYMOUS`, `is_identified = false`).
-- **Por qué:** excluirlas borraría el **14,74 % del revenue bruto** (1,51 M GBP). Incluirlas con un cliente explícito mantiene la venta real y permite comparar identificados contra anónimos (pregunta 5).
+- **Por qué:** excluirlas borraría el **14,74 % del revenue bruto** (1.509.991,68 GBP). Incluirlas con un cliente explícito mantiene la venta real y permite comparar identificados contra anónimos (pregunta 5).
 - **Impacto:** cualquier análisis por cliente debe filtrar `id_customer <> -1`; las consultas de clientes únicos ya lo hacen.
 
 ### 4.2 Descripciones distintas para el mismo código
 
-- **Hallazgo:** 645 códigos llegan con más de una forma de escribir la descripción (`Candle Holder White`, `CANDLE HOLDER WHITE`, o textos como `damaged`, `check`, `?` en ajustes).
+- **Hallazgo:** 645 códigos llegan con más de una forma de escribir la descripción (`Candle Holder White`, `CANDLE HOLDER WHITE`, o textos como `damaged`, `check`, `?` en ajustes). 637 de ellos son códigos de producto que llegan al DWH (pregunta 6).
 - **Decisión:** nombre canónico = **la descripción más frecuente** del código, en mayúsculas y con espacios normalizados. En empate gana la **más reciente** y luego el orden alfabético.
 - **Por qué:** es una regla determinística (mismo resultado en cada ejecución) y la descripción más usada es la del catálogo, no la del ajuste manual.
 - **Trazabilidad:** `products_dim.description_variants` guarda cuántas formas distintas llegaron (contando también filas rechazadas), lo que responde la pregunta 6.
@@ -163,6 +178,6 @@ Todo el dataset está en libras (`GBP`); no hay datos de Colombia, México ni Pe
 |---|---|
 | API de productos (plus opcional) | Servicio FastAPI en el compose que sirva las mismas reglas de `category_rules.csv`, Connection `product_api` de tipo HTTP y una Variable `datamart_use_api` para elegir la fuente en `extract_category_rules`. |
 | Carga incremental por día | Archivo diario con fecha en el nombre (`ventas_{{ ds }}.csv`) y delete-insert solo del rango `data_interval_start`–`data_interval_end`. |
-| Clasificación de categorías | El 18 % de los productos queda `Uncategorized`; se puede bajar ampliando la semilla o con el catálogo maestro cuando exista. |
+| Clasificación de categorías | El 17 % de los productos (680 de 3.927) queda `Uncategorized`; se puede bajar ampliando la semilla o con el catálogo maestro cuando exista. |
 | Devoluciones que cruzan días | Relacionar cada cancelación con su factura original (cliente + código + precio) para un neto por venta y no solo por día. |
 | Alertas | `on_failure_callback` con aviso a Slack o correo. |
