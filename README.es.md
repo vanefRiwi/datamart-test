@@ -38,11 +38,11 @@ Pipeline de extremo a extremo orquestado con **Apache Airflow 3.1.5** dentro de 
 git clone https://github.com/vanefRiwi/datamart-test.git
 cd datamart-test
 
-# 2. Crear el .env a partir del ejemplo (en Linux, además, tu UID)
+# 2. Crear el .env a partir del ejemplo (basado en .env.example)
 cp .env.example .env
-echo "AIRFLOW_UID=$(id -u)" >> .env     # solo Linux; omitir en Windows/macOS
 
-# 3. Levantar todo (equivale a `docker-compose up -d` con Compose v1)
+
+# 3. Levantar todo (luego esperar a que cargue)
 docker compose up -d
 ```
 
@@ -177,13 +177,7 @@ Esperado: **522.535** ventas, **10.004** devoluciones, **277.958** filas product
 
 ### 2.7 Las consultas de negocio responden cada pregunta
 
-```bash
-for f in sql/queries/*.sql; do echo "== $f"; docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh < "$f"; done
-```
-
-La salida coincide con las tablas de [`docs/business_answers.es.md`](docs/business_answers.es.md). En Windows PowerShell, un archivo a la vez: `Get-Content sql/queries/q1_monthly_net_sales.sql | docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh`.
-
-Desde DBeaver o Power BI: host `localhost`, puerto `5433`, base `datamart_dwh` y el usuario/clave de `.env`.
+Desde DBeaver o Power BI: host `localhost`, puerto `5433`, base `datamart_dwh` y el usuario/clave de `.env`. Para ver los resultados de las consultas
 
 ---
 
