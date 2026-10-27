@@ -1,0 +1,22 @@
+# Credentials
+.env
+
+# Virtual env (uv) and Python caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Airflow runtime files
+logs/*
+!logs/.gitkeep
+config/airflow.cfg
+data/tmp/
+airflow.db
+standalone_admin_password.txt
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
