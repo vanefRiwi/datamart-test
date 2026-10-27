@@ -45,7 +45,7 @@ seeds/*.csv ──────────────────────�
 
 ## 2. Modelo del repositorio analítico
 
-**Esquema estrella con dos hechos separados (ventas y devoluciones) que comparten dimensiones, más un agregado diario.** El diagrama está en [`data_model.es.md`](data_model.es.md) (Mermaid) y [`data_model.dbml`](data_model.dbml) (para importar en dbdiagram.io).
+**Constelación de hechos: dos hechos separados (ventas y devoluciones) que comparten dimensiones conformadas, más un agregado diario.** El diagrama está en [`data_model.es.md`](data_model.es.md) (Mermaid) y [`data_model.dbml`](data_model.dbml) (para importar en dbdiagram.io).
 
 | Tabla | Grano | Para qué |
 |---|---|---|

@@ -45,7 +45,7 @@ seeds/*.csv ──────────────────────�
 
 ## 2. Analytical warehouse model
 
-**Star schema with two separate facts (sales and returns) that share dimensions, plus a daily aggregate.** The diagram is in [`data_model.md`](data_model.md) (Mermaid) and [`data_model.dbml`](data_model.dbml) (to import into dbdiagram.io).
+**Fact constellation: two separate facts (sales and returns) that share conformed dimensions, plus a daily aggregate.** The diagram is in [`data_model.md`](data_model.md) (Mermaid) and [`data_model.dbml`](data_model.dbml) (to import into dbdiagram.io).
 
 | Table | Grain | Purpose |
 |---|---|---|
