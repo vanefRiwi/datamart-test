@@ -157,20 +157,46 @@ The whole dataset is in pounds (`GBP`); there is no data from Colombia, Mexico o
 
 ## 5. DAG idempotency
 
-**Test performed:** the DAG was run twice in a row with the same files and an MD5 hash of every row of each table was compared. The result was **identical** (522,535 sales, 10,004 returns, 277,958 aggregate rows, same keys in the dimensions).
+**What it means here:** running `datamart_daily_etl` twice (the same day or any day) with the same files in `data/raw/` leaves **exactly the same rows** in every `dwh` table. It never duplicates sales, returns or rejections, and the surrogate keys of the dimensions don't change.
 
-| Mechanism | How it works |
-|---|---|
-| Deterministic transform | Same inputs → same rows, same canonical name and same `row_hash`. No `now()` or random values in keys. |
-| Dimensions with upsert | `UPDATE` of what changed and `INSERT ... WHERE NOT EXISTS` of what is new: surrogate keys don't change and sequences don't skip values. |
-| Facts with delete-insert | In a single transaction the rows of the processed sources are deleted and inserted again from staging. If the inserted count doesn't match staging, it rolls back. |
-| `row_hash` as PK | Second safety net: the database rejects any repeated line. |
-| Aggregate and rejections | Rebuilt completely on every run. |
-| `max_active_runs=1` | Two runs never write at the same time. |
+### 5.1 Why it is idempotent, task by task
 
-> **About filtering by date.** The data is from 2010-2011 and the DAG runs with today's date, so filtering by `data_interval_start` would leave every run empty. Each run processes the full files in `data/raw` (the "daily dump"). In production the next step would be to process only the file of the day and delete-insert only that date range.
+The rule behind every load task is **"replace, never append"**: before writing, each task removes what a previous run of the same sources wrote, inside the same transaction.
 
-`audit.pipeline_runs` is the only table that changes between runs on purpose: it is a log (one row per `run_id`).
+| Task | What happens on a second run | Why it doesn't duplicate |
+|---|---|---|
+| `prepare_tmp_dir` / `cleanup_tmp` | Each run writes its Parquet files to `data/tmp/<run_id>/` and the teardown deletes them | Runs never read each other's intermediate files |
+| `transform_and_merge` | Produces the same rows, the same canonical names and the same `row_hash` | Deterministic: no `now()`, random values or sequences in the keys; ties are broken by date and then alphabetically |
+| `load_staging` | `TRUNCATE` of the three `staging` tables, then `COPY` | Staging only ever holds the current run |
+| `load_rejections` | `DELETE FROM audit.rejected_records WHERE source_system IN (sources)`, then `COPY` | The rejection log is replaced, not appended; its PK (`source_system`, `source_row`) would reject a repeated row anyway |
+| `load_dimensions` | `UPDATE` of what changed, `INSERT ... WHERE NOT EXISTS` of what is new | Existing members keep their `id_*`, so the facts keep pointing to the same keys |
+| `load_sales_fact` / `load_returns_fact` | In **one transaction**: `DELETE` the rows of the processed sources, `INSERT` them again from staging | If the inserted count differs from staging, the whole transaction rolls back and the previous data stays intact |
+| `build_daily_revenue` | `DELETE` of the whole aggregate, then rebuilt from the facts | Always derived from the current facts |
+| `validate_load` | Upsert of the run's row in `audit.pipeline_runs` (`ON CONFLICT (run_id)`) | A retry of the same run updates its row instead of adding another |
+
+Two extra safety nets:
+
+- **`row_hash` is the primary key of both facts** (MD5 of invoice, code, quantity, price, UTC minute and customer). Even if the delete step were skipped, the database would refuse a repeated line.
+- **`max_active_runs=1`**: two runs can never write at the same time, so one can't delete while the other inserts.
+
+**Retries are safe for the same reason.** Each task with `retries=2` either commits its whole transaction or nothing, and on a retry it deletes and rewrites the same rows again.
+
+### 5.2 Proof
+
+The DAG was run twice in a row with the same files and the **fingerprint** of each table (row count plus the MD5 of all its keys, in order) was compared before and after. Both runs gave identical results:
+
+| table_name | row_count | fingerprint |
+|---|---:|---|
+| daily_product_revenue_agg | 277,958 | a547d1b8b42dbdad8868b934c7f5b54e |
+| products_dim | 3,927 | 808dfd65249bdd5ec7fef8f408459281 |
+| returns_fact | 10,004 | 2b18dbd84f63372eae15b9e4e9acfc69 |
+| sales_fact | 522,535 | d685aec4f5c3d12a533a08a083835157 |
+
+The query is [`sql/validation/idempotency_fingerprint.sql`](../sql/validation/idempotency_fingerprint.sql), and [README, section 2.8](../README.md#28-the-dag-is-idempotent) explains how to repeat the check.
+
+`audit.pipeline_runs` is the only table that grows between runs on purpose: it is the run log, one row per `run_id`.
+
+> **About filtering by date.** The data is from 2010-2011 and the DAG runs with today's date, so filtering by `data_interval_start` would leave every run empty. Each run processes the full files in `data/raw` (the "daily dump"). In production the next step would be to process only the file of the day and delete-insert only that date range; the "replace, never append" rule stays the same.
 
 ---
 

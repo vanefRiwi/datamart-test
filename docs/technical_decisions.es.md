@@ -157,20 +157,46 @@ Todo el dataset está en libras (`GBP`); no hay datos de Colombia, México ni Pe
 
 ## 5. Idempotencia del DAG
 
-**Prueba realizada:** se ejecutó el DAG dos veces seguidas con los mismos archivos y se comparó un hash MD5 de todas las filas de cada tabla. El resultado fue **idéntico** (522.535 ventas, 10.004 devoluciones, 277.958 filas del agregado, mismas llaves en las dimensiones).
+**Qué significa aquí:** ejecutar `datamart_daily_etl` dos veces (el mismo día o cualquier otro) con los mismos archivos en `data/raw/` deja **exactamente las mismas filas** en todas las tablas de `dwh`. Nunca duplica ventas, devoluciones ni rechazos, y las llaves subrogadas de las dimensiones no cambian.
 
-| Mecanismo | Cómo funciona |
-|---|---|
-| Transformación determinística | Mismas entradas → mismas filas, mismo nombre canónico y mismo `row_hash`. Nada de `now()` ni aleatorios en llaves. |
-| Dimensiones con upsert | `UPDATE` de lo que cambió e `INSERT ... WHERE NOT EXISTS` de lo nuevo: las llaves subrogadas no cambian y las secuencias no se saltan valores. |
-| Hechos con delete-insert | En una sola transacción se borran las filas de las fuentes procesadas y se insertan desde staging. Si el conteo insertado no coincide con staging, se hace rollback. |
-| `row_hash` como PK | Segunda red: la base rechaza cualquier línea repetida. |
-| Agregado y rechazos | Se reconstruyen completos en cada ejecución. |
-| `max_active_runs=1` | Dos ejecuciones nunca escriben a la vez. |
+### 5.1 Por qué es idempotente, tarea por tarea
 
-> **Nota sobre el filtro por fecha.** Los datos son de 2010-2011 y el DAG corre con fecha de hoy, así que filtrar por `data_interval_start` dejaría cada ejecución vacía. Cada run procesa los archivos completos que estén en `data/raw` (el "volcado diario"). En producción el siguiente paso sería procesar solo el archivo del día y borrar-insertar solo ese rango de fechas.
+La regla detrás de cada tarea de carga es **"reemplazar, nunca acumular"**: antes de escribir, cada tarea borra lo que escribió una ejecución anterior de las mismas fuentes, dentro de la misma transacción.
 
-`audit.pipeline_runs` es la única tabla que cambia entre ejecuciones a propósito: es una bitácora (una fila por `run_id`).
+| Tarea | Qué pasa en una segunda ejecución | Por qué no duplica |
+|---|---|---|
+| `prepare_tmp_dir` / `cleanup_tmp` | Cada run escribe sus Parquet en `data/tmp/<run_id>/` y el teardown los borra | Un run nunca lee los archivos intermedios de otro |
+| `transform_and_merge` | Produce las mismas filas, los mismos nombres canónicos y el mismo `row_hash` | Determinista: sin `now()`, aleatorios ni secuencias en las llaves; los empates se resuelven por fecha y luego por orden alfabético |
+| `load_staging` | `TRUNCATE` de las tres tablas de `staging` y luego `COPY` | Staging solo contiene el run actual |
+| `load_rejections` | `DELETE FROM audit.rejected_records WHERE source_system IN (fuentes)` y luego `COPY` | El log de rechazos se reemplaza, no se acumula; su PK (`source_system`, `source_row`) rechazaría igual una fila repetida |
+| `load_dimensions` | `UPDATE` de lo que cambió e `INSERT ... WHERE NOT EXISTS` de lo nuevo | Los miembros existentes conservan su `id_*`, así que los hechos siguen apuntando a las mismas llaves |
+| `load_sales_fact` / `load_returns_fact` | En **una sola transacción**: `DELETE` de las filas de las fuentes procesadas e `INSERT` de nuevo desde staging | Si el conteo insertado no coincide con staging, toda la transacción hace rollback y los datos anteriores quedan intactos |
+| `build_daily_revenue` | `DELETE` de todo el agregado y reconstrucción desde los hechos | Siempre se deriva de los hechos actuales |
+| `validate_load` | Upsert de la fila del run en `audit.pipeline_runs` (`ON CONFLICT (run_id)`) | Un reintento del mismo run actualiza su fila en vez de agregar otra |
+
+Dos redes de seguridad adicionales:
+
+- **`row_hash` es la llave primaria de ambos hechos** (MD5 de factura, código, cantidad, precio, minuto UTC y cliente). Aunque se saltara el borrado, la base rechazaría una línea repetida.
+- **`max_active_runs=1`**: dos runs nunca escriben a la vez, así que uno no puede borrar mientras el otro inserta.
+
+**Los reintentos son seguros por la misma razón.** Cada tarea con `retries=2` confirma toda su transacción o nada, y en el reintento vuelve a borrar y escribir las mismas filas.
+
+### 5.2 Prueba
+
+Se ejecutó el DAG dos veces seguidas con los mismos archivos y se comparó la **huella** de cada tabla (conteo de filas más el MD5 de todas sus llaves, en orden) antes y después. Las dos ejecuciones dieron resultados idénticos:
+
+| table_name | row_count | fingerprint |
+|---|---:|---|
+| daily_product_revenue_agg | 277.958 | a547d1b8b42dbdad8868b934c7f5b54e |
+| products_dim | 3.927 | 808dfd65249bdd5ec7fef8f408459281 |
+| returns_fact | 10.004 | 2b18dbd84f63372eae15b9e4e9acfc69 |
+| sales_fact | 522.535 | d685aec4f5c3d12a533a08a083835157 |
+
+La consulta es [`sql/validation/idempotency_fingerprint.sql`](../sql/validation/idempotency_fingerprint.sql) y la [sección 2.8 del README](../README.es.md#28-el-dag-es-idempotente) explica cómo repetir la prueba.
+
+`audit.pipeline_runs` es la única tabla que crece entre ejecuciones a propósito: es la bitácora, una fila por `run_id`.
+
+> **Sobre el filtro por fecha.** Los datos son de 2010-2011 y el DAG corre con fecha de hoy, así que filtrar por `data_interval_start` dejaría cada ejecución vacía. Cada run procesa los archivos completos que estén en `data/raw` (el "volcado diario"). En producción el siguiente paso sería procesar solo el archivo del día y borrar-insertar solo ese rango de fechas; la regla "reemplazar, nunca acumular" sigue igual.
 
 ---
 
