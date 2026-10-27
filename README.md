@@ -9,7 +9,7 @@ End-to-end pipeline orchestrated with **Apache Airflow 3.1.5** in Docker: it rea
 **Author:** Vanessa Fontalvo Reniz · Systems and Computer Engineer
 **Module:** Data Engineering — Performance test (Airflow + Data Warehouse)
 
-> The supporting documents in `docs/` (technical decisions, data exploration, data model and business answers) are written in Spanish.
+> Every document in `docs/` is available in English (primary, `*.md`) and Spanish (`*.es.md`): [technical decisions](docs/technical_decisions.md), [data exploration](docs/data_exploration.md), [data model](docs/data_model.md) and [business answers](docs/business_answers.md).
 
 ---
 
@@ -19,8 +19,8 @@ End-to-end pipeline orchestrated with **Apache Airflow 3.1.5** in Docker: it rea
 
 ```bash
 # 1. Clone
-git clone https://github.com/vanefRiwi/practice-test-airflow.git
-cd practice-test-airflow
+git clone https://github.com/vanefRiwi/datamart-test.git
+cd datamart-test
 
 # 2. Create .env from the example (on Linux, set your UID: echo "AIRFLOW_UID=$(id -u)" >> .env)
 cp .env.example .env
@@ -119,7 +119,7 @@ From DBeaver or Power BI: host `localhost`, port `5433`, database `datamart_dwh`
 | Daily sales (Kaggle `carrie1/ecommerce-data`) | `data/raw/data.csv` | 541,909 | ISO-8859-1 encoding, negative quantities, prices ≤ 0, 24.9 % without customer, service codes (POST, DOT...), duplicates |
 | History (Kaggle `thedevastator/online-retail-transaction-dataset`) | `data/raw/online_retail.csv` | 541,909 | Extra `index` column, decimal CustomerID (`17850.0`) and **same period and lines** as the daily source |
 
-The CSVs are in `data/raw/` exactly as they come from Kaggle (45 and 50 MB). The full exploration is in [`docs/exploracion_datos.md`](docs/exploracion_datos.md).
+The CSVs are in `data/raw/` exactly as they come from Kaggle (45 and 50 MB). The full exploration is in [`docs/data_exploration.md`](docs/data_exploration.md).
 
 ---
 
@@ -178,7 +178,7 @@ Each source is read as text (`dtype=str`) so types are not guessed blindly. If U
 2. CustomerID as an integer string (`17850.0` → `17850`); empty = ANONYMOUS customer.
 3. Dates with an explicit format per source → `Europe/London` → **UTC**.
 4. Countries normalized with `seeds/country_mapping.csv`.
-5. Each row gets a rejection reason or stays valid (see the table in the [technical decisions](docs/decisiones_tecnicas.md#motivos-de-rechazo-se-evalúan-en-orden-gana-el-primero)).
+5. Each row gets a rejection reason or stays valid (see the table in the [technical decisions](docs/technical_decisions.md#rejection-reasons-evaluated-in-order-the-first-one-wins)).
 6. `row_hash` = MD5 of the natural key; duplicates within each source and across sources (`data.csv` wins).
 7. Canonical name (most frequent description) and category by keyword.
 
@@ -204,15 +204,15 @@ Star schema with **two separate facts** (sales and returns) sharing four dimensi
           daily_product_revenue_agg (id_date, id_product)
 ```
 
-- Full diagram: [`docs/modelo_datos.md`](docs/modelo_datos.md) (rendered on GitHub) and [`docs/modelo_datos.dbml`](docs/modelo_datos.dbml) for dbdiagram.io.
+- Full diagram: [`docs/data_model.md`](docs/data_model.md) (rendered on GitHub) and [`docs/data_model.dbml`](docs/data_model.dbml) for dbdiagram.io.
 - DDL: [`sql/ddl/`](sql/ddl). Runs when the container is created (`docker-entrypoint-initdb.d`) and again in the `create_dwh_tables` task (everything is `IF NOT EXISTS`).
-- Why this design: [`docs/decisiones_tecnicas.md`](docs/decisiones_tecnicas.md#2-modelo-del-repositorio-analítico).
+- Why this design: [`docs/technical_decisions.md`](docs/technical_decisions.md#2-analytical-warehouse-model).
 
 ---
 
 ## 7. Technical decisions and ambiguous cases
 
-Summary; the full reasoning, with numbers and discarded alternatives, is in **[`docs/decisiones_tecnicas.md`](docs/decisiones_tecnicas.md)**.
+Summary; the full reasoning, with numbers and discarded alternatives, is in **[`docs/technical_decisions.md`](docs/technical_decisions.md)**.
 
 | Case | Decision |
 |---|---|
@@ -228,17 +228,17 @@ Summary; the full reasoning, with numbers and discarded alternatives, is in **[`
 
 ## 8. Business questions
 
-One query per question in [`sql/queries/`](sql/queries); answers with numbers in **[`docs/respuestas_negocio.md`](docs/respuestas_negocio.md)**.
+One query per question in [`sql/queries/`](sql/queries); answers with the exact query results in **[`docs/business_answers.md`](docs/business_answers.md)**.
 
 | # | Question | Query | Short answer |
 |---|---|---|---|
-| 1 | Monthly net sales trend | `q1_monthly_net_sales.sql` | Peak in November 2011 (1.43 M); Sep-Nov = 35 % of the year |
-| 2 | Categories by revenue and returns | `q2_category_revenue_returns.sql` | Home = 59.8 % of gross; Stationery has the most returns (16.2 %) |
-| 3 | Top 10 by net revenue and top 10 by return rate | `q3_top_products.sql` | #1 REGENCY CAKESTAND (164k net) |
-| 4 | Countries and average ticket | `q4_country_avg_ticket.sql` | United Kingdom = 90.5 % of invoices; Netherlands ticket 3,053 |
-| 5 | Identified vs. no CustomerID | `q5_identified_vs_anonymous.sql` | No customer: ticket 1,101 vs 475, 96 products per invoice |
-| 6 | Inconsistent descriptions and unique codes | `q6_inconsistent_descriptions.sql` | 3,927 codes; 637 (16.2 %) inconsistent |
-| 7 | Recommendation to the product team | `q7_product_recommendation.sql` | Two cancelled orders = 51.7 % of returns → cap quantity per line |
+| 1 | Monthly net sales trend | `q1_monthly_net_sales.sql` | Peak in November 2011 (net 1,426,587.54); Sep-Nov = 34.97 % of gross |
+| 2 | Categories by revenue and returns | `q2_category_revenue_returns.sql` | Home = 59.79 % of gross; Stationery has the highest return share (16.16 %) |
+| 3 | Top 10 by net revenue and top 10 by return rate | `q3_top_products.sql` | #1 by net: 22423 REGENCY CAKESTAND 3 TIER (164,459.49); #1 by return rate: 23843 (100.00 %) |
+| 4 | Countries and average ticket | `q4_country_avg_ticket.sql` | United Kingdom = 90.53 % of invoices; highest ticket: Netherlands (3,052.57) |
+| 5 | Identified vs. no CustomerID | `q5_identified_vs_anonymous.sql` | No CustomerID: ticket 1,101.38 vs 474.77, 95.8 products per invoice |
+| 6 | Inconsistent descriptions and unique codes | `q6_inconsistent_descriptions.sql` | 3,927 codes; 637 (16.22 %) inconsistent |
+| 7 | Recommendation to the product team | `q7_product_recommendation.sql` | Two cancelled orders = 51.68 % of all returns → cap quantity per line |
 
 ---
 
@@ -260,7 +260,7 @@ Airflow is not installed in the local environment on purpose: it is heavy and al
 ## 10. Repository layout
 
 ```
-practice-test-airflow/
+datamart-test/
 ├── docker-compose.yml          # Airflow 3.1.5 + metadata Postgres + DWH Postgres
 ├── .env.example                # Required environment variables (the real .env is in .gitignore)
 ├── pyproject.toml / uv.lock    # Local environment with uv
@@ -281,7 +281,7 @@ practice-test-airflow/
 │   └── queries/                # One query per business question
 ├── seeds/                      # Category rules and country mapping
 ├── data/raw/                   # Kaggle source CSVs
-├── docs/                       # Decisions, exploration, model and answers (Spanish)
+├── docs/                       # Decisions, exploration, model and answers (EN + ES)
 ├── scripts/explore_sources.py  # Data exploration
 ├── tests/                      # pytest tests
 ├── config/ logs/ plugins/      # Folders mounted by Airflow
