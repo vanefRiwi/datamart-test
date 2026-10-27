@@ -204,6 +204,18 @@ Expected: both outputs are **identical** (same `row_count` and same `fingerprint
 
 The CSVs are in `data/raw/` exactly as they come from Kaggle (45 and 50 MB). The full exploration is in [`docs/data_exploration.md`](docs/data_exploration.md).
 
+
+### Seeds (`seeds/`)
+
+The two seed files are **not downloaded from any source**: they were built by hand for this project from the data exploration ([`docs/data_exploration.md`](docs/data_exploration.md)). They are versioned so the pipeline runs from scratch with no external dependency.
+
+| File | Origin | Content | Used for |
+|---|---|---|---|
+| [`seeds/category_rules.csv`](seeds/category_rules.csv) | Own work: keywords picked by reading the most frequent product descriptions | 224 rules `priority, keyword, category` for the 5 categories of the brief (Home, Clothing, Electronics, Sports, Stationery) | Assign a category to each product, since the optional products API was not built ([technical decisions, 4.5](docs/technical_decisions.md#45-product-category-without-the-api)) |
+| [`seeds/country_mapping.csv`](seeds/country_mapping.csv) | Own work: country aliases found in the `Country` column of both sources | 8 mappings `source_name, country_name` (EIRE → Ireland, RSA → South Africa, USA → United States, Unspecified → Unknown...) | Normalize country names before loading `countries_dim` ([technical decisions, 4.6](docs/technical_decisions.md#46-currency-and-countries)) |
+
+To change a category or add an alias, edit the CSV and run the DAG again; no code change is needed.
+
 ---
 
 ## 4. Pipeline diagram

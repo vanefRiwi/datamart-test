@@ -204,6 +204,18 @@ Esperado: las dos salidas son **idénticas** (mismo `row_count` y mismo `fingerp
 
 Los CSV están en `data/raw/` tal como vienen de Kaggle (45 y 50 MB). La exploración completa está en [`docs/data_exploration.es.md`](docs/data_exploration.es.md).
 
+
+### Seeds (`seeds/`)
+
+Los dos archivos de seeds **no se descargaron de ninguna fuente**: se construyeron a mano para este proyecto a partir de la exploración de los datos ([`docs/data_exploration.es.md`](docs/data_exploration.es.md)). Están versionados para que el pipeline corra desde cero sin depender de nada externo.
+
+| Archivo | Origen | Contenido | Para qué se usa |
+|---|---|---|---|
+| [`seeds/category_rules.csv`](seeds/category_rules.csv) | Elaboración propia: palabras clave elegidas leyendo las descripciones de producto más frecuentes | 224 reglas `priority, keyword, category` para las 5 categorías del enunciado (Home, Clothing, Electronics, Sports, Stationery) | Asignar categoría a cada producto, ya que no se construyó la API opcional de productos ([decisiones técnicas, 4.5](docs/technical_decisions.es.md#45-categoría-de-producto-sin-la-api)) |
+| [`seeds/country_mapping.csv`](seeds/country_mapping.csv) | Elaboración propia: alias de país encontrados en la columna `Country` de ambas fuentes | 8 equivalencias `source_name, country_name` (EIRE → Ireland, RSA → South Africa, USA → United States, Unspecified → Unknown...) | Normalizar los nombres de país antes de cargar `countries_dim` ([decisiones técnicas, 4.6](docs/technical_decisions.es.md#46-moneda-y-países)) |
+
+Para cambiar una categoría o agregar un alias, se edita el CSV y se vuelve a correr el DAG; no hace falta tocar código.
+
 ---
 
 ## 4. Diagrama del pipeline
