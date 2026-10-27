@@ -263,15 +263,6 @@ Data contract before loading (columns, unique keys, nulls, price and quantity, r
 
 **Fact constellation** (two stars): **two separate facts** (sales and returns) sharing four dimensions, plus a daily net revenue aggregate.
 
-```
-               dates_dim          products_dim
-                    │  ╲          ╱    │
-                    │   sales_fact     │
- customers_dim ─────┼──╱          ╲────┼───── countries_dim
-                    │   returns_fact   │
-                    │  ╱          ╲    │
-          daily_product_revenue_agg (id_date, id_product)
-```
 
 ![Data model](docs/data_model.png)
 

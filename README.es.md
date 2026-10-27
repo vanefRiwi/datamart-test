@@ -263,15 +263,6 @@ Contrato de datos antes de cargar (columnas, llaves únicas, nulos, precio y can
 
 **Constelación de hechos** (dos estrellas): **dos hechos separados** (ventas y devoluciones) que comparten cuatro dimensiones, más un agregado diario de revenue neto.
 
-```
-               dates_dim          products_dim
-                    │  ╲          ╱    │
-                    │   sales_fact     │
- customers_dim ─────┼──╱          ╲────┼───── countries_dim
-                    │   returns_fact   │
-                    │  ╱          ╲    │
-          daily_product_revenue_agg (id_date, id_product)
-```
 
 ![Modelo de datos](docs/data_model.png)
 
