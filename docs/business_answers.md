@@ -2,7 +2,7 @@
 
 **English** | [Español](business_answers.es.md)
 
-Every answer comes from one query in [`sql/queries/`](../sql/queries), run against the analytical warehouse after the DAG finishes. The tables below are the **exact query results** (same columns, same order, same rows; amounts in pounds sterling, GBP). Period: 2010-12-01 to 2011-12-09.
+Every answer comes from one query in [`sql/queries/`](../sql/queries) (shown under "Show the SQL" in each section), run against the analytical warehouse after the DAG finishes. The tables below are the **exact query results** (same columns, same order, same rows; amounts in pounds sterling, GBP). Period: 2010-12-01 to 2011-12-09.
 
 > **Number format.** This English version uses `,` for thousands and `.` for decimals (`1,028,320.38`). The [Spanish version](business_answers.es.md) uses the format shown by DBeaver with a Spanish locale (`1.028.320,38`). The values are identical. DBeaver hides trailing zeros (`758.090,5`); here every amount keeps the two decimals PostgreSQL returns (`758,090.50`).
 
@@ -13,6 +13,30 @@ Every answer comes from one query in [`sql/queries/`](../sql/queries), run again
 ## Q1. Monthly net sales trend
 
 Query: [`q1_monthly_net_sales.sql`](../sql/queries/q1_monthly_net_sales.sql)
+
+<details>
+<summary>Show the SQL (q1_monthly_net_sales.sql)</summary>
+
+```sql
+-- =============================================================================
+-- Q1. Monthly net sales trend (gross - returns)
+-- =============================================================================
+SELECT d.year_month,
+       SUM(a.gross_revenue)                                  AS gross_revenue,
+       SUM(a.returns_amount)                                 AS returns_amount,
+       SUM(a.net_revenue)                                    AS net_revenue,
+       ROUND(100.0 * SUM(a.returns_amount)
+             / NULLIF(SUM(a.gross_revenue), 0), 2)           AS return_pct,
+       ROUND(100.0 * (SUM(a.net_revenue) - LAG(SUM(a.net_revenue)) OVER (ORDER BY d.year_month))
+             / NULLIF(LAG(SUM(a.net_revenue)) OVER (ORDER BY d.year_month), 0), 2)
+                                                             AS pct_change_vs_prev_month
+FROM dwh.daily_product_revenue_agg a
+JOIN dwh.dates_dim d ON d.id_date = a.id_date
+GROUP BY d.year_month
+ORDER BY d.year_month;
+```
+
+</details>
 
 | year_month | gross_revenue | returns_amount | net_revenue | return_pct | pct_change_vs_prev_month |
 |---|---:|---:|---:|---:|---:|
@@ -42,6 +66,31 @@ Query: [`q1_monthly_net_sales.sql`](../sql/queries/q1_monthly_net_sales.sql)
 
 Query: [`q2_category_revenue_returns.sql`](../sql/queries/q2_category_revenue_returns.sql)
 
+<details>
+<summary>Show the SQL (q2_category_revenue_returns.sql)</summary>
+
+```sql
+-- =============================================================================
+-- Q2. Categories with the most gross revenue and the highest share of returns
+-- =============================================================================
+SELECT p.category,
+       COUNT(DISTINCT p.id_product)                          AS products,
+       SUM(a.gross_revenue)                                  AS gross_revenue,
+       ROUND(100.0 * SUM(a.gross_revenue)
+             / SUM(SUM(a.gross_revenue)) OVER (), 2)         AS pct_of_total_gross,
+       SUM(a.returns_amount)                                 AS returns_amount,
+       ROUND(100.0 * SUM(a.returns_amount)
+             / NULLIF(SUM(a.gross_revenue), 0), 2)           AS return_pct_amount,
+       ROUND(100.0 * SUM(a.units_returned)
+             / NULLIF(SUM(a.units_sold), 0), 2)              AS return_pct_units
+FROM dwh.daily_product_revenue_agg a
+JOIN dwh.products_dim p ON p.id_product = a.id_product
+GROUP BY p.category
+ORDER BY gross_revenue DESC;
+```
+
+</details>
+
 | category | products | gross_revenue | pct_of_total_gross | returns_amount | return_pct_amount | return_pct_units |
 |---|---:|---:|---:|---:|---:|---:|
 | Home | 1,904 | 6,126,782.80 | 59.79 | 239,573.39 | 3.91 | 8.04 |
@@ -62,6 +111,48 @@ Query: [`q2_category_revenue_returns.sql`](../sql/queries/q2_category_revenue_re
 ## Q3. Top 10 products by net revenue and top 10 by return rate
 
 Query: [`q3_top_products.sql`](../sql/queries/q3_top_products.sql)
+
+<details>
+<summary>Show the SQL (q3_top_products.sql)</summary>
+
+```sql
+-- =============================================================================
+-- Q3a. Top 10 products by net revenue
+-- =============================================================================
+SELECT p.stock_code,
+       p.product_description,
+       p.category,
+       SUM(a.gross_revenue)  AS gross_revenue,
+       SUM(a.returns_amount) AS returns_amount,
+       SUM(a.net_revenue)    AS net_revenue
+FROM dwh.daily_product_revenue_agg a
+JOIN dwh.products_dim p ON p.id_product = a.id_product
+GROUP BY p.stock_code, p.product_description, p.category
+ORDER BY net_revenue DESC
+LIMIT 10;
+
+-- =============================================================================
+-- Q3b. Top 10 products by return rate (returned amount / gross).
+-- Only products with at least 1,000 GBP of gross sales: without that floor a
+-- product with a single returned sale would show up at 100 %.
+-- =============================================================================
+SELECT p.stock_code,
+       p.product_description,
+       p.category,
+       SUM(a.units_sold)     AS units_sold,
+       SUM(a.units_returned) AS units_returned,
+       SUM(a.gross_revenue)  AS gross_revenue,
+       SUM(a.returns_amount) AS returns_amount,
+       ROUND(100.0 * SUM(a.returns_amount) / SUM(a.gross_revenue), 2) AS return_pct
+FROM dwh.daily_product_revenue_agg a
+JOIN dwh.products_dim p ON p.id_product = a.id_product
+GROUP BY p.stock_code, p.product_description, p.category
+HAVING SUM(a.gross_revenue) >= 1000
+ORDER BY return_pct DESC
+LIMIT 10;
+```
+
+</details>
 
 **Q3a. Top 10 by net revenue**
 
@@ -102,6 +193,29 @@ Query: [`q3_top_products.sql`](../sql/queries/q3_top_products.sql)
 ## Q4. Countries by number of transactions and average ticket
 
 Query: [`q4_country_avg_ticket.sql`](../sql/queries/q4_country_avg_ticket.sql). Transaction = sales invoice (`invoice_no`); ticket = gross revenue / invoices; `customers` excludes the anonymous customer.
+
+<details>
+<summary>Show the SQL (q4_country_avg_ticket.sql)</summary>
+
+```sql
+-- =============================================================================
+-- Q4. Countries with the most transactions and average ticket per country
+-- Transaction = sales invoice (invoice_no). Ticket = gross / invoices.
+-- =============================================================================
+SELECT c.country_name,
+       COUNT(DISTINCT s.invoice_no)                                   AS invoices,
+       ROUND(100.0 * COUNT(DISTINCT s.invoice_no)
+             / SUM(COUNT(DISTINCT s.invoice_no)) OVER (), 2)          AS pct_invoices,
+       SUM(s.gross_revenue)                                           AS gross_revenue,
+       ROUND(SUM(s.gross_revenue) / COUNT(DISTINCT s.invoice_no), 2)  AS avg_ticket,
+       COUNT(DISTINCT s.id_customer) FILTER (WHERE s.id_customer <> -1) AS customers
+FROM dwh.sales_fact s
+JOIN dwh.countries_dim c ON c.id_country = s.id_country
+GROUP BY c.country_name
+ORDER BY invoices DESC;
+```
+
+</details>
 
 | country_name | invoices | pct_invoices | gross_revenue | avg_ticket | customers |
 |---|---:|---:|---:|---:|---:|
@@ -154,6 +268,47 @@ Query: [`q4_country_avg_ticket.sql`](../sql/queries/q4_country_avg_ticket.sql). 
 
 Query: [`q5_identified_vs_anonymous.sql`](../sql/queries/q5_identified_vs_anonymous.sql)
 
+<details>
+<summary>Show the SQL (q5_identified_vs_anonymous.sql)</summary>
+
+```sql
+-- =============================================================================
+-- Q5. Buying behaviour: identified customers vs. transactions without
+-- CustomerID (generic customer id_customer = -1, ANONYMOUS)
+-- =============================================================================
+WITH sales AS (
+    SELECT cu.is_identified,
+           COUNT(DISTINCT s.invoice_no)                         AS invoices,
+           COUNT(*)                                             AS lines,
+           SUM(s.quantity)                                      AS units,
+           SUM(s.gross_revenue)                                 AS gross_revenue,
+           ROUND(AVG(s.unit_price), 2)                          AS avg_unit_price
+    FROM dwh.sales_fact s
+    JOIN dwh.customers_dim cu ON cu.id_customer = s.id_customer
+    GROUP BY cu.is_identified
+),
+returns AS (
+    SELECT cu.is_identified, SUM(r.return_amount) AS returns_amount
+    FROM dwh.returns_fact r
+    JOIN dwh.customers_dim cu ON cu.id_customer = r.id_customer
+    GROUP BY cu.is_identified
+)
+SELECT CASE WHEN s.is_identified THEN 'Identified' ELSE 'No CustomerID' END AS customer_type,
+       s.invoices,
+       ROUND(100.0 * s.gross_revenue / SUM(s.gross_revenue) OVER (), 2) AS pct_of_gross,
+       s.gross_revenue,
+       ROUND(s.gross_revenue / s.invoices, 2)           AS avg_ticket,
+       ROUND(1.0 * s.lines / s.invoices, 1)             AS products_per_invoice,
+       ROUND(1.0 * s.units / s.lines, 1)                AS units_per_line,
+       s.avg_unit_price,
+       ROUND(100.0 * COALESCE(r.returns_amount, 0) / s.gross_revenue, 2) AS return_pct
+FROM sales s
+LEFT JOIN returns r ON r.is_identified = s.is_identified
+ORDER BY s.is_identified DESC;
+```
+
+</details>
+
 | customer_type | invoices | pct_of_gross | gross_revenue | avg_ticket | products_per_invoice | units_per_line | avg_unit_price | return_pct |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Identified | 18,402 | 85.26 | 8,736,675.79 | 474.77 | 21.3 | 13.1 | 2.87 | 5.40 |
@@ -168,6 +323,42 @@ Query: [`q5_identified_vs_anonymous.sql`](../sql/queries/q5_identified_vs_anonym
 ## Q6. Products without a consistent description and total unique codes
 
 Query: [`q6_inconsistent_descriptions.sql`](../sql/queries/q6_inconsistent_descriptions.sql)
+
+<details>
+<summary>Show the SQL (q6_inconsistent_descriptions.sql)</summary>
+
+```sql
+-- =============================================================================
+-- Q6a. Products without a consistent description (more than one spelling)
+-- =============================================================================
+SELECT stock_code,
+       product_description AS canonical_name,
+       description_variants,
+       category
+FROM dwh.products_dim
+WHERE description_variants > 1
+ORDER BY description_variants DESC, stock_code;
+
+-- =============================================================================
+-- Q6b. Totals: unique product codes and how many have inconsistent descriptions
+-- =============================================================================
+SELECT COUNT(*)                                          AS unique_product_codes,
+       COUNT(*) FILTER (WHERE description_variants > 1)  AS with_inconsistent_description,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE description_variants > 1) / COUNT(*), 2)
+                                                         AS pct_inconsistent,
+       COUNT(*) FILTER (WHERE description_variants = 0)  AS without_description
+FROM dwh.products_dim;
+
+-- Q6c. Codes that came in the sources but are not catalog products
+SELECT UPPER(REGEXP_REPLACE(raw_record ->> 'stock_code', '\s', '', 'g')) AS code,
+       COUNT(*) AS lines
+FROM audit.rejected_records
+WHERE reason = 'not_a_product_code' AND source_system = 'daily_sales'
+GROUP BY 1
+ORDER BY lines DESC, code;
+```
+
+</details>
 
 **Q6b. Totals**
 
@@ -245,6 +436,43 @@ Query: [`q6_inconsistent_descriptions.sql`](../sql/queries/q6_inconsistent_descr
 ## Q7. Recommendation to the product team
 
 Query: [`q7_product_recommendation.sql`](../sql/queries/q7_product_recommendation.sql). Products with at least 5,000 GBP of gross revenue, ordered by amount returned.
+
+<details>
+<summary>Show the SQL (q7_product_recommendation.sql)</summary>
+
+```sql
+-- =============================================================================
+-- Q7. Numbers behind the recommendation to the product team:
+-- products with high gross revenue that lose a relevant share to returns.
+-- pct_of_all_returns is computed after the WHERE filter: it is the share of the
+-- returns of the products with at least 5,000 GBP of gross revenue.
+-- =============================================================================
+WITH product AS (
+    SELECT p.stock_code,
+           p.product_description,
+           p.category,
+           SUM(a.gross_revenue)  AS gross_revenue,
+           SUM(a.returns_amount) AS returns_amount,
+           SUM(a.net_revenue)    AS net_revenue
+    FROM dwh.daily_product_revenue_agg a
+    JOIN dwh.products_dim p ON p.id_product = a.id_product
+    GROUP BY p.stock_code, p.product_description, p.category
+)
+SELECT stock_code,
+       product_description,
+       category,
+       gross_revenue,
+       returns_amount,
+       net_revenue,
+       ROUND(100.0 * returns_amount / gross_revenue, 2)                AS return_pct,
+       ROUND(100.0 * returns_amount / SUM(returns_amount) OVER (), 2)  AS pct_of_all_returns
+FROM product
+WHERE gross_revenue >= 5000
+ORDER BY returns_amount DESC
+LIMIT 15;
+```
+
+</details>
 
 | stock_code | product_description | category | gross_revenue | returns_amount | net_revenue | return_pct | pct_of_all_returns |
 |---|---|---|---:|---:|---:|---:|---:|

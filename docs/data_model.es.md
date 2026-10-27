@@ -4,6 +4,10 @@
 
 Esquema estrella en el esquema `dwh` del PostgreSQL analítico. GitHub dibuja el diagrama de abajo automáticamente. Para la versión en dbdiagram.io, importa [`data_model.dbml`](data_model.dbml). El DDL completo está en [`sql/ddl/`](../sql/ddl). Por qué se diseñó así: [decisiones técnicas, sección 2](technical_decisions.es.md#2-modelo-del-repositorio-analítico).
 
+![Modelo de datos](data_model.png)
+
+El mismo diagrama en Mermaid (GitHub lo dibuja; `data_model.png` se generó a partir de él):
+
 ```mermaid
 erDiagram
     dates_dim ||--o{ sales_fact : id_date
@@ -80,6 +84,23 @@ erDiagram
         int units_returned
         numeric returns_amount
         numeric net_revenue "bruto - devoluciones"
+    }
+    rejected_records {
+        varchar source_system PK "fuente y fila del CSV"
+        int source_row PK
+        varchar reason
+        jsonb raw_record "registro original"
+        varchar run_id
+    }
+    pipeline_runs {
+        varchar run_id PK
+        timestamptz logical_date
+        int rows_read_sales
+        int rows_read_history
+        int rows_valid
+        int rows_rejected
+        int duplicates_cross_source
+        varchar status
     }
 ```
 
