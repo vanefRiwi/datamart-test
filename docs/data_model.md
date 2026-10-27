@@ -4,6 +4,10 @@
 
 Star schema in the `dwh` schema of the analytical PostgreSQL. GitHub draws the diagram below automatically. For the dbdiagram.io version, import [`data_model.dbml`](data_model.dbml). The full DDL is in [`sql/ddl/`](../sql/ddl). Why it is designed this way: [technical decisions, section 2](technical_decisions.md#2-analytical-warehouse-model).
 
+![Data model](data_model.png)
+
+The same diagram in Mermaid (GitHub renders it; `data_model.png` was generated from it):
+
 ```mermaid
 erDiagram
     dates_dim ||--o{ sales_fact : id_date
@@ -80,6 +84,23 @@ erDiagram
         int units_returned
         numeric returns_amount
         numeric net_revenue "gross - returns"
+    }
+    rejected_records {
+        varchar source_system PK "source and CSV row"
+        int source_row PK
+        varchar reason
+        jsonb raw_record "original record"
+        varchar run_id
+    }
+    pipeline_runs {
+        varchar run_id PK
+        timestamptz logical_date
+        int rows_read_sales
+        int rows_read_history
+        int rows_valid
+        int rows_rejected
+        int duplicates_cross_source
+        varchar status
     }
 ```
 

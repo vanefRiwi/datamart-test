@@ -4,6 +4,18 @@
 
 Este documento explica **cómo se diseñó el repositorio analítico y por qué**, cómo se resolvió cada caso ambiguo del enunciado y cómo se garantiza la idempotencia del DAG. Las cifras son las reales obtenidas al correr el pipeline con los archivos de Kaggle incluidos en `data/raw/`.
 
+**Mapa contra el enunciado (sección 8, documento de decisiones técnicas):**
+
+| El enunciado pide | Sección |
+|---|---|
+| Cómo se diseñó el modelo analítico y por qué | [2. Modelo del repositorio analítico](#2-modelo-del-repositorio-analítico) (diagrama: [`data_model.png`](data_model.png)) |
+| Cómo se aplicaron las reglas de negocio de la sección 5 | [3. Reglas de negocio](#3-reglas-de-negocio-cómo-se-implementó-cada-una) |
+| Caso ambiguo: transacciones sin customer ID | [4.1](#41-transacciones-sin-customerid) |
+| Caso ambiguo: descripciones distintas para un código | [4.2](#42-descripciones-distintas-para-el-mismo-código) |
+| Caso ambiguo: solapamiento y duplicados entre fuentes | [4.3](#43-solapamiento-y-duplicados-entre-las-dos-fuentes) |
+| Cómo se garantiza la idempotencia del DAG | [5. Idempotencia del DAG](#5-idempotencia-del-dag) |
+| Qué quedó pendiente y cómo se resolvería | [7. Pendientes](#7-pendientes-y-cómo-los-resolvería) |
+
 ---
 
 ## 1. Arquitectura general

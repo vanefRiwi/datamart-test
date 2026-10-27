@@ -13,23 +13,40 @@ Pipeline de extremo a extremo orquestado con **Apache Airflow 3.1.5** dentro de 
 
 ---
 
+## Dónde está cada entregable
+
+| Entregable (enunciado, sección 8) | Dónde |
+|---|---|
+| `docker-compose.yml` con todos los servicios | [`docker-compose.yml`](docker-compose.yml) |
+| `.env.example` (el `.env` real está en `.gitignore`) | [`.env.example`](.env.example) |
+| DAG y su código | [`dags/datamart_etl_dag.py`](dags/datamart_etl_dag.py) + [`include/datamart/`](include/datamart) |
+| Scripts DDL | [`sql/ddl/`](sql/ddl) |
+| Datos y seeds para correr desde cero | [`data/raw/`](data/raw) + [`seeds/`](seeds) |
+| README: de clonar a datos verificados en menos de 10 minutos | Secciones [1](#1-inicio-rápido-menos-de-10-minutos) y [2](#2-verificación-paso-a-paso) |
+| Decisiones técnicas (modelo, casos ambiguos, idempotencia) | [`docs/technical_decisions.es.md`](docs/technical_decisions.es.md) |
+| Diagrama del modelo de datos | [`docs/data_model.png`](docs/data_model.png) (imagen), [`docs/data_model.es.md`](docs/data_model.es.md), [`docs/data_model.dbml`](docs/data_model.dbml) (dbdiagram.io) |
+| Consultas SQL de validación, una por pregunta | [`sql/queries/`](sql/queries), con sus resultados en [`docs/business_answers.es.md`](docs/business_answers.es.md) |
+
+---
+
 ## 1. Inicio rápido (menos de 10 minutos)
 
-**Requisitos:** Docker Desktop (o Docker Engine + Compose v2) con al menos **4 GB de RAM** asignados y Git. No hace falta instalar Python ni descargar nada de Kaggle: los datos vienen en el repositorio.
+**Requisitos:** Docker Desktop (o Docker Engine + Compose v2) con al menos **4 GB de RAM**, Git y los puertos **8080** y **5433** libres. No hace falta instalar Python ni descargar nada de Kaggle: los datos vienen en el repositorio.
 
 ```bash
 # 1. Clonar
 git clone https://github.com/vanefRiwi/datamart-test.git
 cd datamart-test
 
-# 2. Crear el .env a partir del ejemplo (en Linux, pon tu UID: echo "AIRFLOW_UID=$(id -u)" >> .env)
+# 2. Crear el .env a partir del ejemplo (en Linux, además, tu UID)
 cp .env.example .env
+echo "AIRFLOW_UID=$(id -u)" >> .env     # solo Linux; omitir en Windows/macOS
 
-# 3. Levantar todo
+# 3. Levantar todo (equivale a `docker-compose up -d` con Compose v1)
 docker compose up -d
 ```
 
-Al terminar el arranque (1 a 2 minutos la primera vez, más la descarga de imágenes) queda todo listo **sin pasos manuales**:
+Ese único comando deja todo listo **sin pasos manuales**: crea el usuario admin, las Connections, las Variables y las tablas del repositorio analítico, y el DAG se ejecuta solo.
 
 | Servicio | Qué hace | Acceso |
 |---|---|---|
@@ -37,38 +54,84 @@ Al terminar el arranque (1 a 2 minutos la primera vez, más la descarga de imág
 | `airflow-scheduler` | Detecta y ejecuta el DAG | — |
 | `airflow-dag-processor` | Parsea los DAGs | — |
 | `airflow-triggerer` | Tareas diferidas | — |
-| `postgres-airflow` | Metadatos de Airflow | interno |
+| `postgres-airflow` | Metadatos de Airflow (no es el repositorio analítico) | interno |
 | `postgres-dwh` | Repositorio analítico con las tablas creadas al iniciar | `localhost:5433` |
 | `airflow-init` | Migra metadatos, crea el admin, las **Connections** y las **Variables**, y termina | — |
 
-El DAG `datamart_daily_etl` queda **activo** y el scheduler lanza su primera ejecución automáticamente (tarda unos 2 minutos). También se puede lanzar a mano con el botón ▶ de la UI.
+**Tiempos esperados** (medidos desde un clon nuevo):
 
-Para empezar de cero (borra las bases): `docker compose down -v`.
+| Paso | Tiempo |
+|---|---|
+| Descarga de imágenes (solo la primera vez, unos 1,5 GB) | 2 a 5 min, según la conexión |
+| `docker compose up -d` hasta que todos los servicios estén healthy | cerca de 1 min |
+| Primera ejecución del DAG (arranca sola, el DAG nace activo) | cerca de 2 a 3 min |
+| Verificaciones de la sección 2 | cerca de 2 min |
+
+Para empezar de cero (borra las dos bases de datos): `docker compose down -v`.
 
 ---
 
 ## 2. Verificación paso a paso
 
-### 2.1 Servicios arriba
+Ejecuta estos comandos desde la carpeta del repositorio cuando `docker compose up -d` termine.
+
+### 2.1 Todos los servicios están arriba
 
 ```bash
-docker compose ps          # todos "healthy"; airflow-init "exited (0)"
+docker compose ps -a
 ```
 
-### 2.2 Connections y Variables creadas solas
+Esperado: `airflow-apiserver`, `airflow-scheduler`, `airflow-dag-processor`, `airflow-triggerer`, `postgres-airflow` y `postgres-dwh` en `Up ... (healthy)`; `airflow-init` en `Exited (0)`. Si alguno dice `(health: starting)`, espera 30 segundos y repite.
+
+El log del init muestra lo que creó:
+
+```bash
+docker compose logs airflow-init | tail -15
+```
+
+Esperado: `Connections: ['dwh_postgres', 'fs_datamart']`, las 5 Variables e `Init done.`
+
+### 2.2 Las Connections están configuradas y funcionan
 
 ```bash
 docker compose exec airflow-scheduler airflow connections get dwh_postgres -o yaml
 docker compose exec airflow-scheduler airflow connections get fs_datamart -o yaml
-docker compose exec airflow-scheduler airflow variables list
 ```
 
-También se ven en la UI: **Admin → Connections** y **Admin → Variables**.
+Esperado: `dwh_postgres` con `conn_type: postgres`, `host: postgres-dwh`, `port: '5432'`, `schema: datamart_dwh` y el usuario de `.env`; `fs_datamart` con `conn_type: fs` y `path: /opt/airflow/data` dentro de `extra_dejson`.
+
+Para comprobar que `dwh_postgres` de verdad llega al repositorio analítico, ejecuta la tarea del DAG que la usa (`airflow tasks test` corre una tarea sin registrar una ejecución del DAG):
+
+```bash
+docker compose exec airflow-scheduler airflow tasks test datamart_daily_etl create_dwh_tables
+```
+
+Esperado: el log muestra `Running 01_schemas.sql` ... `Running 04_staging_audit.sql` y termina con `new_state=success`.
+
+Desde la UI: **Admin → Connections → `dwh_postgres` → Edit → Test** muestra `Connection successfully tested` (la prueba de conexiones está habilitada en `docker-compose.yml`).
 
 | Connection | Tipo | Uso |
 |---|---|---|
 | `dwh_postgres` | postgres | Repositorio analítico (host `postgres-dwh`, credenciales tomadas de `.env`) |
 | `fs_datamart` | fs | Carpeta `/opt/airflow/data` que vigilan los `FileSensor` |
+
+### 2.3 Las Variables están inicializadas
+
+```bash
+docker compose exec airflow-scheduler bash -c 'for v in datamart_sales_file datamart_history_file datamart_source_timezone datamart_max_reject_ratio datamart_currency; do printf "%-26s %s\n" "$v" "$(airflow variables get $v)"; done'
+```
+
+Esperado:
+
+```
+datamart_sales_file        raw/data.csv
+datamart_history_file      raw/online_retail.csv
+datamart_source_timezone   Europe/London
+datamart_max_reject_ratio  0.10
+datamart_currency          GBP
+```
+
+También se ven en la UI en **Admin → Variables**.
 
 | Variable | Valor inicial | Para qué |
 |---|---|---|
@@ -80,13 +143,23 @@ También se ven en la UI: **Admin → Connections** y **Admin → Variables**.
 
 Se definen en [`airflow/init/variables.json`](airflow/init/variables.json) y las crea [`airflow/init/init_airflow.sh`](airflow/init/init_airflow.sh) en cada arranque.
 
-### 2.3 El DAG terminó bien
+### 2.4 Las tablas del repositorio analítico existen desde el arranque
+
+```bash
+docker compose exec postgres-dwh psql -U dwh_user -d datamart_dwh -c '\dt dwh.*' -c '\dt audit.*'
+```
+
+Esperado: 7 tablas en `dwh` (`dates_dim`, `products_dim`, `customers_dim`, `countries_dim`, `sales_fact`, `returns_fact`, `daily_product_revenue_agg`) y 2 en `audit` (`rejected_records`, `pipeline_runs`). Si en `.env` usas otro usuario distinto de `dwh_user`, cambia `-U` en cada comando `psql`.
+
+### 2.5 El DAG terminó bien
 
 ```bash
 docker compose exec airflow-scheduler airflow dags list-runs datamart_daily_etl
 ```
 
-### 2.4 Los datos llegaron al repositorio analítico
+Esperado: una ejecución `scheduled__...` en estado `success` (mientras corre dice `running`; espera y repite). En la UI: **Dags → `datamart_daily_etl`**, todas las tareas en verde. Para correrlo otra vez a mano: ▶ en la UI o `docker compose exec airflow-scheduler airflow dags trigger datamart_daily_etl`.
+
+### 2.6 Los datos llegaron al repositorio analítico
 
 ```bash
 docker compose exec postgres-dwh psql -U dwh_user -d datamart_dwh -c "
@@ -97,16 +170,18 @@ UNION ALL SELECT 'products_dim', COUNT(*) FROM dwh.products_dim
 UNION ALL SELECT 'customers_dim', COUNT(*) FROM dwh.customers_dim
 UNION ALL SELECT 'rejected_records', COUNT(*) FROM audit.rejected_records;"
 
-docker compose exec postgres-dwh psql -U dwh_user -d datamart_dwh -c "SELECT * FROM audit.pipeline_runs;"
+docker compose exec postgres-dwh psql -U dwh_user -d datamart_dwh -c "SELECT run_id, rows_sales_fact, rows_returns_fact, rows_rejected, status FROM audit.pipeline_runs;"
 ```
 
-Resultado esperado: **522.535** ventas, **10.004** devoluciones, **277.958** filas producto-día, **3.927** productos, **4.363** clientes (incluido ANONYMOUS) y **18.740** rechazos.
+Esperado: **522.535** ventas, **10.004** devoluciones, **277.958** filas producto-día, **3.927** productos, **4.363** clientes (incluido ANONYMOUS) y **18.740** rechazos; una fila en `audit.pipeline_runs` por ejecución con estado `success`. Correr el DAG otra vez deja exactamente los mismos conteos (idempotencia).
 
-Las consultas de negocio se ejecutan igual, por ejemplo:
+### 2.7 Las consultas de negocio responden cada pregunta
 
 ```bash
-docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh < sql/queries/q1_monthly_net_sales.sql
+for f in sql/queries/*.sql; do echo "== $f"; docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh < "$f"; done
 ```
+
+La salida coincide con las tablas de [`docs/business_answers.es.md`](docs/business_answers.es.md). En Windows PowerShell, un archivo a la vez: `Get-Content sql/queries/q1_monthly_net_sales.sql | docker compose exec -T postgres-dwh psql -U dwh_user -d datamart_dwh`.
 
 Desde DBeaver o Power BI: host `localhost`, puerto `5433`, base `datamart_dwh` y el usuario/clave de `.env`.
 
@@ -204,7 +279,9 @@ Esquema estrella con **dos hechos separados** (ventas y devoluciones) que compar
           daily_product_revenue_agg (id_date, id_product)
 ```
 
-- Diagrama completo: [`docs/data_model.es.md`](docs/data_model.es.md) (se dibuja en GitHub) y [`docs/data_model.dbml`](docs/data_model.dbml) para dbdiagram.io.
+![Modelo de datos](docs/data_model.png)
+
+- Diagrama completo: [`docs/data_model.png`](docs/data_model.png) (imagen de arriba), [`docs/data_model.es.md`](docs/data_model.es.md) (Mermaid, se dibuja en GitHub) y [`docs/data_model.dbml`](docs/data_model.dbml) (pégalo en [dbdiagram.io](https://dbdiagram.io/d) → Import para un diagrama interactivo).
 - DDL: [`sql/ddl/`](sql/ddl). Corre al crear el contenedor (`docker-entrypoint-initdb.d`) y otra vez en la tarea `create_dwh_tables` (todo es `IF NOT EXISTS`).
 - Por qué este diseño: [`docs/technical_decisions.es.md`](docs/technical_decisions.es.md#2-modelo-del-repositorio-analítico).
 

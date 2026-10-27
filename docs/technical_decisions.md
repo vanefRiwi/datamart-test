@@ -4,6 +4,18 @@
 
 This document explains **how the analytical warehouse was designed and why**, how each ambiguous case in the brief was resolved and how the DAG stays idempotent. The numbers are the real ones obtained by running the pipeline on the Kaggle files included in `data/raw/`.
 
+**Map to the assignment (section 8, technical decisions document):**
+
+| The assignment asks for | Section |
+|---|---|
+| How the analytical model was designed and why | [2. Analytical warehouse model](#2-analytical-warehouse-model) (diagram: [`data_model.png`](data_model.png)) |
+| How the business rules of section 5 were applied | [3. Business rules](#3-business-rules-how-each-one-was-implemented) |
+| Ambiguous case: transactions without customer ID | [4.1](#41-transactions-without-customerid) |
+| Ambiguous case: different descriptions for one code | [4.2](#42-different-descriptions-for-the-same-code) |
+| Ambiguous case: overlap and duplicates between sources | [4.3](#43-overlap-and-duplicates-between-the-two-sources) |
+| How the DAG stays idempotent | [5. DAG idempotency](#5-dag-idempotency) |
+| What was left pending and how it would be solved | [7. Pending work](#7-pending-work-and-how-i-would-do-it) |
+
 ---
 
 ## 1. Overall architecture
