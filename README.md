@@ -261,7 +261,7 @@ Data contract before loading (columns, unique keys, nulls, price and quantity, r
 
 ## 6. Data model
 
-Star schema with **two separate facts** (sales and returns) sharing four dimensions, plus a daily net revenue aggregate.
+**Fact constellation** (two stars): **two separate facts** (sales and returns) sharing four dimensions, plus a daily net revenue aggregate.
 
 ```
                dates_dim          products_dim

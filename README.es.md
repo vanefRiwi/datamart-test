@@ -267,7 +267,7 @@ Contrato de datos antes de cargar (columnas, llaves únicas, nulos, precio y can
 
 ## 6. Modelo de datos
 
-Esquema estrella con **dos hechos separados** (ventas y devoluciones) que comparten cuatro dimensiones, más un agregado diario de revenue neto.
+**Constelación de hechos** (dos estrellas): **dos hechos separados** (ventas y devoluciones) que comparten cuatro dimensiones, más un agregado diario de revenue neto.
 
 ```
                dates_dim          products_dim
